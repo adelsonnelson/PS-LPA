@@ -1,0 +1,4 @@
+npm install react-native-chart-kit react-native-svg
+npm install --save-dev @types/rxjs
+npx expo install expo-sensors
+npx expo install expo-sensors
