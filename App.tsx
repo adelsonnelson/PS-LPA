@@ -12,27 +12,37 @@ import {
   Animated,
   Dimensions,
 } from 'react-native';
+import { Accelerometer } from 'expo-sensors'; // Importação correta sem EventSubscription
+
+// IMPORTANTE: Certifique-se de que este arquivo InquietacaoScreen.tsx existe
+// na mesma pasta que o seu App.tsx
+import InquietacaoScreen from './InquietacaoScreen';
 
 const { width } = Dimensions.get('window');
 
+// Interface para o registro de sono
 interface RegistroSono {
   id: string;
   horaInicio: Date;
   horaFim: Date | null;
   duracao: number;
   qualidade: string;
+  nivelInquietacao?: number;
 }
 
+// Constantes para o jogo
 const TAMANHO_JOGADOR = 50;
 const LARGURA_OBSTACULO = 30;
 const ALTURA_OBSTACULO = 60;
 const NIVEL_CHAO = 50;
 
+// Propriedades da tela do jogo
 interface PropsTelaJogo {
   aoVoltar: () => void;
   cores: TemaCores;
 }
 
+// Componente da tela do jogo (mantido igual)
 const GameScreen: React.FC<PropsTelaJogo> = ({ aoVoltar, cores }) => {
   const [estadoJogo, setEstadoJogo] = useState<'pronto' | 'jogando' | 'perdeu'>('pronto');
   const [pontuacao, setPontuacao] = useState(0);
@@ -170,7 +180,7 @@ const GameScreen: React.FC<PropsTelaJogo> = ({ aoVoltar, cores }) => {
 
       {estadoJogo === 'pronto' && (
         <TouchableOpacity
-          style={[estilosJogo.botaoJogo, { backgroundColor: cores.fundoCabecalho }]} // Cor padronizada
+          style={[estilosJogo.botaoJogo, { backgroundColor: cores.fundoCabecalho }]}
           onPress={() => setEstadoJogo('jogando')}
         >
           <Text style={estilosJogo.textoBotaoJogo}>Iniciar Jogo</Text>
@@ -179,7 +189,7 @@ const GameScreen: React.FC<PropsTelaJogo> = ({ aoVoltar, cores }) => {
 
       {estadoJogo === 'jogando' && (
         <TouchableOpacity
-          style={[estilosJogo.botaoJogo, { backgroundColor: cores.fundoCabecalho }]} // Cor padronizada
+          style={[estilosJogo.botaoJogo, { backgroundColor: cores.fundoCabecalho }]}
           onPress={pular}
         >
           <Text style={estilosJogo.textoBotaoJogo}>Pular</Text>
@@ -204,6 +214,7 @@ const GameScreen: React.FC<PropsTelaJogo> = ({ aoVoltar, cores }) => {
   );
 };
 
+// Estilos específicos do jogo (mantidos inalterados)
 const estilosJogo = StyleSheet.create({
   containerJogo: {
     flex: 1,
@@ -319,6 +330,8 @@ const estilosJogo = StyleSheet.create({
   },
 });
 
+
+// Interface para os temas de cores (mantida inalterada)
 interface TemaCores {
   fundoPrincipal: string;
   fundoCabecalho: string;
@@ -336,6 +349,7 @@ interface TemaCores {
   bordaItemRegistro: string;
 }
 
+// Tema claro (mantido inalterado)
 const temaClaro: TemaCores = {
   fundoPrincipal: '#f0f2f5',
   fundoCabecalho: '#6a0dad',
@@ -353,6 +367,7 @@ const temaClaro: TemaCores = {
   bordaItemRegistro: '#eeeeee',
 };
 
+// Tema escuro (mantido inalterado)
 const temaEscuro: TemaCores = {
   fundoPrincipal: '#333333',
   fundoCabecalho: '#1A2B4C',
@@ -370,17 +385,26 @@ const temaEscuro: TemaCores = {
   bordaItemRegistro: '#555555',
 };
 
+// Componente principal do aplicativo
 const App: React.FC = () => {
   const [estaRegistrando, setEstaRegistrando] = useState<boolean>(false);
   const [horaInicioSono, setHoraInicioSono] = useState<Date | null>(null);
   const [registrosSono, setRegistrosSono] = useState<RegistroSono[]>([]);
   const [duracaoSonoAtual, setDuracaoSonoAtual] = useState<number>(0);
-  const [telaAtiva, setTelaAtiva] = useState<'home' | 'game'>('home');
+  // Reintroduzindo 'inquietacao' como uma opção de tela
+  const [telaAtiva, setTelaAtiva] = useState<'home' | 'game' | 'inquietacao'>('home');
   const [temaAtual, setTemaAtual] = useState<'claro' | 'escuro'>('claro');
-  const [blueLightFilter, setBlueLightFilter] = useState<boolean>(false); // Novo estado para o filtro de luz azul
+  const [blueLightFilter, setBlueLightFilter] = useState<boolean>(false);
 
+  // Ref para armazenar a soma dos movimentos do acelerômetro
+  const totalMovement = useRef(0);
+  // Ref para a inscrição do acelerômetro - Tipagem ajustada para 'any'
+  const accelerometerSubscription = useRef<any>(null); // A tipagem 'any' é usada para evitar erros de EventSubscription
+
+  // Seleciona as cores do tema atual
   const cores = temaAtual === 'claro' ? temaClaro : temaEscuro;
 
+  // Efeito para atualizar a duração do sono em tempo real
   useEffect(() => {
     let intervalo: NodeJS.Timeout | null = null;
     if (estaRegistrando && horaInicioSono) {
@@ -395,6 +419,7 @@ const App: React.FC = () => {
     };
   }, [estaRegistrando, horaInicioSono]);
 
+  // Função para formatar a duração do sono
   const formatarDuracao = (totalSegundos: number): string => {
     const horas = Math.floor(totalSegundos / 3600);
     const minutos = Math.floor((totalSegundos % 3600) / 60);
@@ -402,17 +427,32 @@ const App: React.FC = () => {
     return `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}:${segundos.toString().padStart(2, '0')}`;
   };
 
+  // Lida com o início do registro de sono
   const lidarComInicioSono = () => {
     if (!estaRegistrando) {
       setHoraInicioSono(new Date());
       setEstaRegistrando(true);
       Alert.alert('Sono Iniciado', 'Seu registro de sono foi iniciado.');
       setDuracaoSonoAtual(0);
+      totalMovement.current = 0; // Zera o contador de movimento
+
+      // Inicia a coleta de dados do acelerômetro
+      accelerometerSubscription.current = Accelerometer.addListener(
+        accelerometerData => {
+          const { x, y, z } = accelerometerData;
+          // Soma a magnitude para obter um valor acumulado de movimento
+          totalMovement.current += Math.sqrt(x * x + y * y + z * z);
+        }
+      );
+
+      // Define a taxa de atualização do acelerômetro (em milissegundos)
+      Accelerometer.setUpdateInterval(1000); // 1 segundo
     } else {
       Alert.alert('Aviso', 'O registro de sono já está em andamento.');
     }
   };
 
+  // Lida com a parada do registro de sono
   const lidarComParadaSono = () => {
     if (estaRegistrando && horaInicioSono) {
       const horaFim = new Date();
@@ -426,29 +466,43 @@ const App: React.FC = () => {
         qualidade = 'Média';
       }
 
+      // Calcula o nível de inquietação normalizado (exemplo simples)
+      const nivelInquietacao = totalMovement.current / (duracaoEmHoras || 1); // Movimento total por hora
+
       const novoRegistro: RegistroSono = {
         id: Date.now().toString(),
         horaInicio: horaInicioSono,
         horaFim: horaFim,
         duracao: parseFloat(duracaoEmHoras.toFixed(2)),
         qualidade: qualidade,
+        nivelInquietacao: parseFloat(nivelInquietacao.toFixed(2)), // Adiciona o nível de inquietação
       };
 
       setRegistrosSono((registrosAnteriores) => [novoRegistro, ...registrosAnteriores]);
       setEstaRegistrando(false);
       setHoraInicioSono(null);
       setDuracaoSonoAtual(0);
-      Alert.alert('Sono Finalizado', `Você dormiu por ${novoRegistro.duracao.toFixed(2)} horas. Qualidade: ${novoRegistro.qualidade}.`);
+      totalMovement.current = 0; // Zera o contador após o registro
+
+      // Para a coleta de dados do acelerômetro
+      if (accelerometerSubscription.current) {
+        accelerometerSubscription.current.remove(); // Usa .remove() para expo-sensors
+        accelerometerSubscription.current = null;
+      }
+
+      Alert.alert('Sono Finalizado', `Você dormiu por ${novoRegistro.duracao.toFixed(2)} horas. Qualidade: ${novoRegistro.qualidade}. Nível de Inquietação: ${novoRegistro.nivelInquietacao?.toFixed(2)}.`);
     } else {
       Alert.alert('Aviso', 'Nenhum registro de sono ativo para parar.');
     }
   };
 
+  // Lida com a troca de tema (claro/escuro)
   const lidarComTrocaTema = () => {
     setTemaAtual(prevTema => (prevTema === 'claro' ? 'escuro' : 'claro'));
   };
 
-  const toggleBlueLightFilter = () => { // Função para alternar o filtro de luz azul
+  // Função para alternar o filtro de luz azul
+  const toggleBlueLightFilter = () => {
     setBlueLightFilter(prev => !prev);
   };
 
@@ -472,22 +526,22 @@ const App: React.FC = () => {
             ]}
             onPress={lidarComTrocaTema}
           >
-            {/* Imagem removida */}
+            {/* Conteúdo do botão de tema (pode ser um ícone) */}
           </TouchableOpacity>
 
           {/* Novo botão para filtro de luz azul */}
           <TouchableOpacity
             style={[
-              estilos.botaoTema, // Reutiliza alguns estilos base do botão de tema
+              estilos.botaoTema,
               {
-                top: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 170 : 170, // Posiciona abaixo do botão de tema
-                backgroundColor: blueLightFilter ? 'white' : '#1E90FF', // Fundo branco se ativo, azul se inativo
-                borderColor: blueLightFilter ? '#1E90FF' : '#FFFFFF', // Borda azul se ativo, branca se inativo
+                top: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 170 : 170,
+                backgroundColor: blueLightFilter ? 'white' : '#1E90FF',
+                borderColor: blueLightFilter ? '#1E90FF' : '#FFFFFF',
               }
             ]}
             onPress={toggleBlueLightFilter}
           >
-            {/* Texto "Luz Azul" removido de dentro do botão */}
+            {/* Conteúdo do botão de luz azul (pode ser um ícone) */}
           </TouchableOpacity>
 
           {/* Overlay para o filtro de luz azul */}
@@ -514,7 +568,7 @@ const App: React.FC = () => {
 
           <View style={estilos.containerBotoes}>
             <TouchableOpacity
-              style={[estilos.botao, estaRegistrando ? estilos.botaoDesabilitado : { backgroundColor: cores.fundoCabecalho }]} // Cor padronizada
+              style={[estilos.botao, estaRegistrando ? estilos.botaoDesabilitado : { backgroundColor: cores.fundoCabecalho }]}
               onPress={lidarComInicioSono}
               disabled={estaRegistrando}
             >
@@ -549,29 +603,55 @@ const App: React.FC = () => {
                     <Text style={[estilos.qualidadeRegistro, { color: cores.corJogador }]}>
                       Qualidade: {registro.qualidade}
                     </Text>
+                    {/* REMOVIDO: A inquietação não é mais exibida aqui, pois tem sua própria tela */}
+                    {/* {registro.nivelInquietacao !== undefined && (
+                      <Text style={[estilos.qualidadeRegistro, { color: cores.textoSecundario }]}>
+                        Inquietação: {registro.nivelInquietacao.toFixed(2)}
+                      </Text>
+                    )} */}
                   </View>
                 ))}
               </ScrollView>
             )}
           </View>
 
-          {/* Botão Recompensas movido de volta para a tela 'home' */}
-          <TouchableOpacity
-            style={[estilos.botaoRecompensas, { backgroundColor: cores.fundoCabecalho }]} // Cor padronizada
-            onPress={() => setTelaAtiva('game')}
-          >
-            <Text style={estilos.textoBotaoRecompensas}>Recompensas</Text>
-          </TouchableOpacity>
+          {/* CONTAINER PARA OS BOTÕES DE NAVEGAÇÃO (RECOMPENSAS E INQUIETAÇÃO) */}
+          <View style={estilos.containerBotoesNavegacao}>
+            <TouchableOpacity
+              style={[estilos.botaoNavegacao, { backgroundColor: cores.fundoCabecalho }]}
+              onPress={() => setTelaAtiva('inquietacao')} // Navega para a tela de inquietação
+            >
+              <Text style={estilos.textoBotaoNavegacao}>Inquietação</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[estilos.botaoNavegacao, { backgroundColor: cores.fundoCabecalho }]}
+              onPress={() => setTelaAtiva('game')} // Navega para a tela de recompensas (jogo)
+            >
+              <Text style={estilos.textoBotaoNavegacao}>Recompensas</Text>
+            </TouchableOpacity>
+          </View>
         </>
       )}
 
+      {/* RENDERIZAÇÃO CONDICIONAL DA TELA DE JOGO */}
       {telaAtiva === 'game' && (
         <GameScreen aoVoltar={() => setTelaAtiva('home')} cores={cores} />
+      )}
+
+      {/* RENDERIZAÇÃO CONDICIONAL DA TELA DE INQUIETAÇÃO */}
+      {telaAtiva === 'inquietacao' && (
+        <InquietacaoScreen
+          aoVoltar={() => setTelaAtiva('home')}
+          registrosSono={registrosSono}
+          cores={cores}
+        />
       )}
     </SafeAreaView>
   );
 };
 
+// Estilos gerais do aplicativo (mantidos inalterados, com a adição dos novos estilos de navegação)
 const estilos = StyleSheet.create({
   container: {
     flex: 1,
@@ -610,7 +690,6 @@ const estilos = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#000000',
   },
-  // Novo estilo para o overlay do filtro de luz azul
   blueLightOverlay: {
     position: 'absolute',
     top: 0,
@@ -668,10 +747,6 @@ const estilos = StyleSheet.create({
     shadowRadius: 2.5,
     elevation: 4,
   },
-  // Removido background fixo para ser dinâmico
-  botaoIniciar: {
-    // backgroundColor: '#4CAF50',
-  },
   botaoParar: {
     backgroundColor: '#F44336',
   },
@@ -723,24 +798,34 @@ const estilos = StyleSheet.create({
     textAlign: 'center',
     marginTop: 20,
   },
-  botaoRecompensas: {
-    paddingVertical: 15,
+  // NOVOS ESTILOS PARA OS BOTÕES DE NAVEGAÇÃO
+  containerBotoesNavegacao: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
     marginHorizontal: 20,
+    marginTop: 20, // Espaçamento acima dos botões
+    marginBottom: 10,
+  },
+  botaoNavegacao: {
+    flex: 1,
+    paddingVertical: 15,
     borderRadius: 10,
     alignItems: 'center',
-    marginBottom: 10,
+    marginHorizontal: 5, // Espaçamento entre os botões
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
-    // Removido background fixo para ser dinâmico
   },
-  textoBotaoRecompensas: {
+  textoBotaoNavegacao: {
     color: '#ffffff',
     fontSize: 18,
     fontWeight: 'bold',
   },
+  // ESTILO ANTIGO DO BOTÃO RECOMPENSAS REMOVIDO OU NÃO UTILIZADO
+  // botaoRecompensas: { ... }
+  // textoBotaoRecompensas: { ... }
 });
 
 export default App;
